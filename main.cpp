@@ -24,6 +24,8 @@ Facility Furnace("pec");
 Facility Workers[no_of_workers];
 Queue WorkerQueue;
 
+Queue q;
+
 Store Potter_circles ("Hrnciarske kruhy", 2);
 
 Histogram celk("Celková doba pobytu v systému", 0, 10, 30);
@@ -39,14 +41,24 @@ class RawClay_product : public Process
         back:
         for (int a = 0; a < no_of_workers; a++)
         {
-
+            if (!Workers[a].Busy()) {
+                kt = a;
+                break;
+            }
         }
-
-        //Seize(Workers[x]) TODO figure out which worker is free and assign to work
+            if (kt == -1)
+            {
+                Into(WorkerQueue);
+                Passivate();
+                goto back;
+            }
+        Seize(Workers[kt]);
         Enter(Potter_circles);
 
         Wait(Exponential(45));
         Leave(Potter_circles);
+        Release(Workers[kt]);
+
         Wait(4*DAY);
         to_bake+=1; // add to bake queue
 
@@ -106,7 +118,8 @@ class Clay_generator : public Event
     void Behavior() override
     {
         (new RawClay_product)->Activate();
-        (new RawClay_product)->Activate();
+        Activate(Time+20*MINUTE);
+
     }
 };
 
@@ -125,6 +138,7 @@ int main(int argc, char *argv[])
     Init(0.0, SIM_LEN);
 
     (new Clay_generator)->Activate();
+    (new FreetimeGenerator)->Activate();
     Run();
 
     return 0;
