@@ -4,7 +4,6 @@
 #include <cstring>
 #include <cstdlib>
 #include "simlib.h"
-#include <cmath>
 
 //TIME CONSTANTS
 #define MINUTE 1
@@ -26,7 +25,7 @@ Facility Furnace("pec");
 Facility Workers[no_of_workers];
 Queue WorkerQueue; // agregated queue for workers
 
-Store Potter_circles ("Hrnciarske kruhy", 4);
+Store Potter_circles ("Hrnciarske kruhy", 2);
 
 Histogram celk("Celková doba pobytu v systému", 0, DAY, 40);
 
@@ -70,16 +69,19 @@ class Clay_product : public Process
                 break;
             }
         }
-            if (kt == -1)
-            {
-                Into(WorkerQueue);
-                Passivate();
-                goto back;
-            }
+        if (kt == -1)
+        {
+            Into(WorkerQueue);
+            Passivate();
+            goto back;
+        }
+
+        //TODO fix kruhy alebo ich odjebat dopici
+        //Enter(Potter_circles);
         Seize(Workers[kt]);
 
         Wait(Exponential(45));
-        Leave(Potter_circles);
+        //Leave(Potter_circles);
         Release(Workers[kt]);
 
         if(WorkerQueue.Length() > 0)
@@ -99,24 +101,37 @@ class Clay_product : public Process
     }
 };
 
+
 class Freetime : public Process
 {
+    int workerNumber;
+
     void Behavior() override
     {
         Wait(10*HOUR); //after 10 hours workers go home
-        for (auto & Worker : Workers)
+
+        //TODO fix this
+        if (Workers[workerNumber].Busy())
         {
-            Seize(Worker, 10);
+
+            Workers[workerNumber].QueueIn(this, 10);
+            Passivate();
+        }
+        else
+        {
+            Seize(Workers[workerNumber], 10);
         }
 
         Wait(14*HOUR); // home for 14 hours
 
-        for (auto & Worker : Workers)
-        {
-            Release(Worker);
-        }
+
+        Release(Workers[workerNumber]);
     }
 
+public:
+    explicit Freetime(int workerNumber) : Process() {
+        this->workerNumber = workerNumber;
+    }
 };
 
 
@@ -137,19 +152,27 @@ class FreetimeGenerator : public Event
 {
     void Behavior() override
     {
-        (new Freetime)->Activate();
+        for (int i = 0; i < no_of_workers; i++) {
+            (new Freetime(i))->Activate();
+        }
+
         Activate(Time+24*HOUR); //free time is every day
     }
 };
 
 int main(int argc, char *argv[])
 {
-
     RandomSeed(time(nullptr));
     Init(0.0, SIM_LEN);
 
     (new Clay_generator)->Activate();
     (new FreetimeGenerator)->Activate();
+    for (int i = 0; i < no_of_workers; i++)
+    {
+        std::string worker = "Worker " + std::to_string(i);
+        Workers[i].SetName(worker);
+    }
+
     Run();
 
     for (auto & Worker : Workers)
