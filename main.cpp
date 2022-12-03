@@ -86,13 +86,18 @@ protected:
         int w1 = int(Random() * *usable_workers);
 
         // Loading
+
         Seize(Workers[w1]);
+        std::cout << "Seized worker " << w1 <<" in time " << Time << std::endl;
         Seize(Furnace);
+        std::cout << "Seized furnace in time " << Time << std::endl;
         Wait(Exponential(HOUR));
         Release(Workers[w1]);
+        std::cout << "Released worker " << w1 <<" in time " << Time << std::endl;
         ActivateWorkerQueue();
-
+        std::cout << "Activated worker queue in time " << Time << std::endl;
         // Baking
+        std::cout << "Baking started in time " << Time << std::endl;
         Wait(16 * HOUR);
 
         // Select random worker
@@ -100,10 +105,15 @@ protected:
 
         // Unloading
         Seize(Workers[w1]);
+        std::cout << "Seized worker " << w1 <<" in time " << Time << std::endl;
         Wait(Exponential(HOUR));
         Release(Furnace);
+        std::cout << "Released furnace in time " << Time << std::endl;
         Release(Workers[w1]);
+        std::cout << "Released worker " << w1 <<" in time " << Time << std::endl;
         ActivateWorkerQueue();
+        std::cout << "Activated worker queue in time " << Time << std::endl;
+        std::cout << "BAKING PROCES FINISHED IN TIME " << Time << std::endl << std::endl;
     }
 
 public:
@@ -131,7 +141,7 @@ class Finished_product : public Process
     {
         int kt = -1;
 
-    back:
+        back:
         for (int a = 0; a < *usable_workers; a++)
         {
             if (!Workers[a].Busy())
@@ -158,20 +168,19 @@ class Finished_product : public Process
         to_bake_second++;
         if (to_bake_second >= FURNACE_2ND_CAPACITY)
         {
-            std::cout << "2nd bake started with " << to_bake_second << " products" << std::endl;
-            std::cout << "Time " << Time << std::endl;
+            std::cout << "2nd bake process started with " << to_bake_second << " products in time " << Time << std::endl;
             to_bake_second -= FURNACE_2ND_CAPACITY;
             baked_second += FURNACE_2ND_CAPACITY;
             (new Baking_2nd(FURNACE_2ND_CAPACITY))->Activate();
         }
         else if (baked_second + to_bake_second == *avail_clay)
         {
-            std::cout << "2nd bake started with " << to_bake_second << " products" << std::endl;
-            std::cout << "Time " << Time << std::endl;
+            std::cout << "2nd bake process started with " << to_bake_second << " products in time " << Time << std::endl;
 
-            (new Baking_2nd(to_bake_second))->Activate();
+            int baked_amount = to_bake_second;
             baked_second += to_bake_second;
             to_bake_second = 0;
+            (new Baking_2nd(baked_amount))->Activate();
         }
     }
 };
@@ -196,7 +205,7 @@ class Clay_product : public Process
     void Behavior() override
     {
         int kt = -1;
-    back:
+        back:
         for (int a = 0; a < *usable_workers; a++)
         {
             if (!Workers[a].Busy())
@@ -226,8 +235,7 @@ class Clay_product : public Process
 
         if (to_bake_first >= FURNACE_CAPACITY)
         {
-            std::cout << "1st bake started with " << to_bake_first << " products" << std::endl;
-            std::cout << "Time " << Time << std::endl;
+            std::cout << "1st bake process started with " << to_bake_first << " products in time " << Time << std::endl;
 
             to_bake_first -= FURNACE_CAPACITY;
             used_clay -= FURNACE_CAPACITY;
@@ -235,12 +243,12 @@ class Clay_product : public Process
         }
         else if (used_clay - to_bake_first == 0)
         {
-            std::cout << "1st bake started with " << to_bake_first << " products" << std::endl;
-            std::cout << "Time " << Time << std::endl;
+            std::cout << "1st bake process started with " << to_bake_first << " products in time " << Time << std::endl;
 
-            (new Baking_1st(to_bake_first))->Activate();
+            int baked_count = to_bake_first;
             to_bake_first = 0;
             used_clay = 0;
+            (new Baking_1st(baked_count))->Activate();
         }
     }
 };
@@ -312,36 +320,36 @@ int main(int argc, char *argv[])
     {
         switch (opt)
         {
-        case 'c':
-        {
-            check_arg(optarg, pottery_circles);
-            break;
-        }
-        case 'w':
-        {
-            check_arg(optarg, usable_workers);
-            break;
-        }
-        case 't':
-        {
-            check_arg(optarg, worktime);
-            break;
-        }
-        case 'l':
-        {
-            check_arg(optarg, avail_clay);
-            break;
-        }
-        case 'h':
-            std::cout << "-w Number of workers (max is 10)\n"
-                         "-c Number of pottery circles\n"
-                         "-t Work time of the workers in hours (max is 24)\n"
-                         "-l Clay that is available for the simulation\n"
-                         "-h Print this help\n"
-                      << std::endl;
-            exit(0);
-        default:
-            return 1;
+            case 'c':
+            {
+                check_arg(optarg, pottery_circles);
+                break;
+            }
+            case 'w':
+            {
+                check_arg(optarg, usable_workers);
+                break;
+            }
+            case 't':
+            {
+                check_arg(optarg, worktime);
+                break;
+            }
+            case 'l':
+            {
+                check_arg(optarg, avail_clay);
+                break;
+            }
+            case 'h':
+                std::cout << "-w Number of workers (max is 10)\n"
+                             "-c Number of pottery circles\n"
+                             "-t Work time of the workers in hours (max is 24)\n"
+                             "-l Clay that is available for the simulation\n"
+                             "-h Print this help\n"
+                          << std::endl;
+                exit(0);
+            default:
+                return 1;
         }
     }
     if (*usable_workers > NO_OF_WORKERS)
