@@ -1,8 +1,5 @@
 #include <iostream>
-#include <cstdio>
-#include <unistd.h>
-#include <cstring>
-#include <cstdlib>
+#include <getopt.h>
 #include "simlib.h"
 
 //TIME CONSTANTS
@@ -14,20 +11,28 @@
 
 //CAPACITIES
 const int FURNACE_CAPACITY = 150;
-const int FURNACE_2ND_CAPACITY = 80;
-const int AVAIL_CLAY = 250;
+const int FURNACE_2ND_CAPACITY = 75;
+const int AVAIL_CLAY = 300;
 int USED_CLAY = 0;
 
 // GLOBALS
 int to_bake_first = 0; // number of products that are currently ready for baking
 int to_bake_second = 0;
-const int no_of_workers = 2;
+
+const int no_of_workers = 10;
+int usable_workers_i = 4;
+int pottery_circles_i = 2;
+int worktime_i = 10;
+int* usable_workers = &usable_workers_i;
+int* pottery_circles = &pottery_circles_i;
+int* worktime = &worktime_i;
+
 
 Facility Furnace("Furnace");
 Facility Workers[no_of_workers];
-Queue WorkerQueue; // agregated queue for workers
 
-Store Potter_circles ("Hrnciarske kruhy", 2);
+Store Potter_circles ("Hrnciarske kruhy", *pottery_circles);
+Queue WorkerQueue; // agregated queue for workers
 
 Histogram Clay_products("Doba kym sa vyrobia hlinene produkty", 0, DAY, 28);
 Histogram Finished_products("Doba kym sa vyrobia hotove produkty", 0, DAY, 28);
@@ -43,12 +48,42 @@ void ActivateWorkerQueue()
         WorkerQueue.GetFirst()->Activate();
     }
 }
+/// Checks if string contains only digits
+/// \param s string
+/// \return True if digits only
+bool check_is_number(const std::string& s)
+{
+    std::string::const_iterator it = s.begin();
+    while (it != s.end() && std::isdigit(*it)) ++it;
+    return !s.empty() && it == s.end();
+}
+
+void check_arg (char* opt_arg, int* arg)
+{
+    char *ptr = opt_arg;
+    char *endptr = nullptr;
+
+    if (check_is_number(ptr))
+    {
+        *arg = (int) strtol(ptr, &endptr, 10);
+    }
+    else
+    {
+        std::cout << "Bad number";
+        exit(1);
+    }
+}
 
 // Processes
 class Baking : public Process
 {
-    void Behavior() override {
-        int w1 = int(Random() * no_of_workers);
+protected:
+    int baked_count;
+
+    void Behavior() override
+    {
+        //Select random worker
+        int w1 = int(Random() * *usable_workers);
 
         //Loading
         Seize(Workers[w1]);
@@ -57,11 +92,11 @@ class Baking : public Process
         Release(Workers[w1]);
         ActivateWorkerQueue();
 
-        // baking
+        //Baking
         Wait(16 * HOUR);
 
-        //Unloading
-        w1 = int(Random() * no_of_workers);
+        //Select random worker
+        w1 = int(Random() * *usable_workers);
 
         //Unloading
         Seize(Workers[w1]);
@@ -71,6 +106,22 @@ class Baking : public Process
         ActivateWorkerQueue();
     }
 
+public:
+    explicit Baking(int baked_count) : Process() {
+        this->baked_count = baked_count;
+    }
+};
+
+class Baking_2nd : public Baking
+{
+    void Behavior() override
+    {
+        Priority = 3;
+        Baking::Behavior();
+    }
+public:
+    explicit Baking_2nd(int baked_count) : Baking(baked_count){}
+
 };
 
 class Finished_product : public Process
@@ -79,7 +130,7 @@ class Finished_product : public Process
     {
         int kt = -1;
         back:
-        for (int a = 0; a < no_of_workers; a++)
+        for (int a = 0; a < *usable_workers; a++)
         {
             if (!Workers[a].Busy()) {
                 kt = a;
@@ -88,7 +139,7 @@ class Finished_product : public Process
         }
         if (kt == -1)
         {
-            Priority = 2;
+            Priority = 3;
             Into(WorkerQueue);
             Passivate();
             goto back;
@@ -102,12 +153,28 @@ class Finished_product : public Process
         Finished_products(Time);
 
         to_bake_second++;
-        if (to_bake_second >= FURNACE_2ND_CAPACITY) {
+        if (to_bake_second >= FURNACE_2ND_CAPACITY)
+        {
+            std::cout << "2nd bake started with " << to_bake_second << " products" << std::endl;
+            std::cout << "Time " << Time << std::endl;
             to_bake_second -= FURNACE_2ND_CAPACITY;
-
-            (new Baking)->Activate();
+            (new Baking_2nd(FURNACE_2ND_CAPACITY))->Activate();
         }
     }
+};
+
+class Baking_1st : public Baking
+{
+    void Behavior() override
+    {
+        Baking::Behavior();
+        for (int i = 0; i < baked_count; i++)
+        {
+            (new Finished_product)->Activate();
+        }
+    }
+public:
+    explicit Baking_1st(int baked_count) : Baking(baked_count){}
 };
 
 class Clay_product : public Process
@@ -116,7 +183,7 @@ class Clay_product : public Process
     {
         int kt = -1;
         back:
-        for (int a = 0; a < no_of_workers; a++)
+        for (int a = 0; a < *usable_workers; a++)
         {
             if (!Workers[a].Busy()) {
                 kt = a;
@@ -141,18 +208,20 @@ class Clay_product : public Process
 
         Wait(4*DAY); //drying
         to_bake_first+=1; // add to bake queue
+
+
         if (to_bake_first >= FURNACE_CAPACITY)
         {
+            std::cout << "1st bake started with " << to_bake_first << " products" << std::endl;
+            std::cout << "Time " << Time << std::endl;
+
             to_bake_first -= FURNACE_CAPACITY;
-            //choose random worker
-            (new Baking)->Activate();
-            for (int i = 0; i < FURNACE_CAPACITY; i++)
-            {
-                (new Finished_product)->Activate();
-            }
+            USED_CLAY -= FURNACE_CAPACITY;
+            (new Baking_1st(FURNACE_CAPACITY))->Activate();
         }
     }
 };
+
 
 class Freetime : public Process
 {
@@ -160,7 +229,7 @@ class Freetime : public Process
 
     void Behavior() override
     {
-        Wait(10*HOUR); //after 10 hours workers go home
+        Wait(*worktime*HOUR); //after 10 hours workers go home
 
         if (Workers[workerNumber].Busy())
         {
@@ -172,7 +241,7 @@ class Freetime : public Process
             Seize(Workers[workerNumber], 10);
         }
 
-        Wait(14*HOUR); // home for 14 hours
+        Wait((24-*worktime)*HOUR); // home for 14 hours
 
         Release(Workers[workerNumber]);
         ActivateWorkerQueue();
@@ -189,12 +258,15 @@ class Clay_generator : public Event
 {
     void Behavior() override
     {
-        (new Clay_product)->Activate();
-        if (USED_CLAY <= AVAIL_CLAY)
+        if (USED_CLAY >= AVAIL_CLAY)
         {
-            USED_CLAY++;
-            Activate(Time);
+            return;
         }
+
+        (new Clay_product)->Activate();
+        USED_CLAY++;
+        Activate(Time);
+
     }
 };
 
@@ -202,7 +274,7 @@ class FreetimeGenerator : public Event
 {
     void Behavior() override
     {
-        for (int i = 0; i < no_of_workers; i++) {
+        for (int i = 0; i < *usable_workers; i++) {
             (new Freetime(i))->Activate(); //every worker needs to have his own free time
         }
 
@@ -212,25 +284,59 @@ class FreetimeGenerator : public Event
 
 int main(int argc, char *argv[])
 {
+    int opt;
+    while((opt = getopt(argc, argv, "c:w:t:h")) != -1)
+    {
+        switch (opt) {
+            case 'c': {
+                check_arg(optarg, pottery_circles);
+                break;
+            }
+            case 'w': {
+                check_arg(optarg, usable_workers);
+                break;
+            }
+            case 't': {
+                check_arg(optarg, worktime);
+                break;
+            }
+            case 'h':
+                std::cout <<
+                          "-w Number of workers (max is 10)\n"
+                          "-c Number of pottery circles\n"
+                          "-h Print this help"
+                          << std::endl;
+                exit(0);
+            default:
+                return 1;
+        }
+    }
     RandomSeed(time(nullptr));
     Init(0.0, SIM_LEN);
 
+    std::cout << std::string(23, '-')  << "SIMULATION START" << std::string(23, '-') <<std::endl;
+    std::cout << "Number of workers: " << *usable_workers << std::endl;
+    std::cout << "Number of pottery circles: " << *pottery_circles << std::endl;
+    std::cout << "Workitime in hours: " << *worktime << std::endl << std::endl;
+
     (new Clay_generator)->Activate();
     (new FreetimeGenerator)->Activate();
-    for (int i = 0; i < no_of_workers; i++)
+    for (int i = 0; i < *usable_workers; i++)
     {
         std::string worker = "Worker " + std::to_string(i);
         Workers[i].SetName(worker);
     }
     Run();
 
-    for (auto & Worker : Workers)
+    for (int i = 0; i < *usable_workers; i++)
     {
-        Worker.Output();
+        Workers[i].Output();
     }
     Furnace.Output();
     WorkerQueue.Output();
     Clay_products.Output();
     Finished_products.Output();
+
+    std::cout << std::string(23, '-')  << "SIMULATION END" << std::string(23, '-') <<std::endl;
     return 0;
 }
