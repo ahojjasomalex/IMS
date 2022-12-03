@@ -7,7 +7,7 @@
 #include "simlib.h"
 #endif //IMS_MAIN_H
 
-class RawClay_product : public Process{};
-class Baking : public Process{};
+class Clay_product : public Process{};
 
+class Loading : public Process{};
 

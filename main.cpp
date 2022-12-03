@@ -14,43 +14,99 @@
 
 //CAPACITIES
 const int FURNACE_CAPACITY = 150;
-const int AVAIL_CLAY = 600;
+const int FURNACE_2ND_CAPACITY = 80;
+const int AVAIL_CLAY = 250;
 int USED_CLAY = 0;
 
 // GLOBALS
-int to_bake = 0; // number of products that are currently ready for baking
-const int no_of_workers = 5;
+int to_bake_first = 0; // number of products that are currently ready for baking
+int to_bake_second = 0;
+const int no_of_workers = 2;
 
-Facility Furnace("pec");
+Facility Furnace("Furnace");
 Facility Workers[no_of_workers];
 Queue WorkerQueue; // agregated queue for workers
 
 Store Potter_circles ("Hrnciarske kruhy", 2);
 
-Histogram celk("Celková doba pobytu v systému", 0, DAY, 40);
+Histogram Clay_products("Doba kym sa vyrobia hlinene produkty", 0, DAY, 28);
+Histogram Finished_products("Doba kym sa vyrobia hotove produkty", 0, DAY, 28);
 
+
+/**
+ * Helper function to put workers back to work
+ */
+void ActivateWorkerQueue()
+{
+    if(WorkerQueue.Length() > 0)
+    {
+        WorkerQueue.GetFirst()->Activate();
+    }
+}
+
+// Processes
 class Baking : public Process
+{
+    void Behavior() override {
+        int w1 = int(Random() * no_of_workers);
+
+        //Loading
+        Seize(Workers[w1]);
+        Seize(Furnace);
+        Wait(Exponential(HOUR));
+        Release(Workers[w1]);
+        ActivateWorkerQueue();
+
+        // baking
+        Wait(16 * HOUR);
+
+        //Unloading
+        w1 = int(Random() * no_of_workers);
+
+        //Unloading
+        Seize(Workers[w1]);
+        Wait(Exponential(HOUR));
+        Release(Furnace);
+        Release(Workers[w1]);
+        ActivateWorkerQueue();
+    }
+
+};
+
+class Finished_product : public Process
 {
     void Behavior() override
     {
-        if (FURNACE_CAPACITY != to_bake) return;
+        int kt = -1;
+        back:
+        for (int a = 0; a < no_of_workers; a++)
+        {
+            if (!Workers[a].Busy()) {
+                kt = a;
+                break;
+            }
+        }
+        if (kt == -1)
+        {
+            Priority = 2;
+            Into(WorkerQueue);
+            Passivate();
+            goto back;
+        }
 
-        int w1 = int(Random()*no_of_workers);
-        int w2 = (int(Random()*(no_of_workers-1)) + w1) % no_of_workers;
-        //Loading
-        Seize(Workers[w1]);
-        Seize(Workers[w2]);
+        Seize(Workers[kt]);
+        Wait(Exponential(45)); // glazing and painting
+        Release(Workers[kt]);
 
-        Wait(Exponential(HOUR));
+        ActivateWorkerQueue();
+        Finished_products(Time);
 
-        Release(Workers[w1]);
-        Release(Workers[w2]);
+        to_bake_second++;
+        if (to_bake_second >= FURNACE_2ND_CAPACITY) {
+            to_bake_second -= FURNACE_2ND_CAPACITY;
 
-        //Baking
-        Seize(Furnace);
-        Wait(16 * HOUR);
-        Release(Furnace);
-        to_bake -= 150;
+            (new Baking)->Activate();
+        }
     }
 };
 
@@ -58,8 +114,6 @@ class Clay_product : public Process
 {
     void Behavior() override
     {
-        double enter_time = Time;
-
         int kt = -1;
         back:
         for (int a = 0; a < no_of_workers; a++)
@@ -76,31 +130,29 @@ class Clay_product : public Process
             goto back;
         }
 
-        //TODO fix kruhy alebo ich odjebat dopici
-        //Enter(Potter_circles);
         Seize(Workers[kt]);
-
+        Enter(Potter_circles);
         Wait(Exponential(45));
-        //Leave(Potter_circles);
+        Leave(Potter_circles);
         Release(Workers[kt]);
 
-        if(WorkerQueue.Length() > 0)
-        {
-            WorkerQueue.GetFirst()->Activate();
-        }
+        ActivateWorkerQueue();
+        Clay_products(Time);
 
-        Wait(4*DAY);
-        to_bake+=1; // add to bake queue
-        if(to_bake == FURNACE_CAPACITY)
+        Wait(4*DAY); //drying
+        to_bake_first+=1; // add to bake queue
+        if (to_bake_first >= FURNACE_CAPACITY)
         {
-            Wait(Exponential(HOUR)); //loading
+            to_bake_first -= FURNACE_CAPACITY;
+            //choose random worker
+            (new Baking)->Activate();
+            for (int i = 0; i < FURNACE_CAPACITY; i++)
+            {
+                (new Finished_product)->Activate();
+            }
         }
-        (new Baking)->Activate();
-
-        celk(Time-enter_time);
     }
 };
-
 
 class Freetime : public Process
 {
@@ -110,10 +162,8 @@ class Freetime : public Process
     {
         Wait(10*HOUR); //after 10 hours workers go home
 
-        //TODO fix this
         if (Workers[workerNumber].Busy())
         {
-
             Workers[workerNumber].QueueIn(this, 10);
             Passivate();
         }
@@ -124,8 +174,8 @@ class Freetime : public Process
 
         Wait(14*HOUR); // home for 14 hours
 
-
         Release(Workers[workerNumber]);
+        ActivateWorkerQueue();
     }
 
 public:
@@ -134,7 +184,7 @@ public:
     }
 };
 
-
+//Events
 class Clay_generator : public Event
 {
     void Behavior() override
@@ -153,7 +203,7 @@ class FreetimeGenerator : public Event
     void Behavior() override
     {
         for (int i = 0; i < no_of_workers; i++) {
-            (new Freetime(i))->Activate();
+            (new Freetime(i))->Activate(); //every worker needs to have his own free time
         }
 
         Activate(Time+24*HOUR); //free time is every day
@@ -172,15 +222,15 @@ int main(int argc, char *argv[])
         std::string worker = "Worker " + std::to_string(i);
         Workers[i].SetName(worker);
     }
-
     Run();
 
     for (auto & Worker : Workers)
     {
         Worker.Output();
     }
-
+    Furnace.Output();
     WorkerQueue.Output();
-    celk.Output();
+    Clay_products.Output();
+    Finished_products.Output();
     return 0;
 }
