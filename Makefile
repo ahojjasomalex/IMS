@@ -1,13 +1,26 @@
-CC = g++
+CC=g++
 
-CFLAGS = -g -Wall
+CFLAGS=-Wall -Wextra -pedantic -std=c++17 -g
 
 TARGET = main
 
+.PHONY: all
 all: main
 
-main: main.cpp
-	$(CC) $(CFLAGS) -o main main.cpp -lsimlib
+main: src/main.cpp src/main.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -o build/pottery src/main.cpp -lsimlib
+
+run:
+	@mkdir -p logs
+	@echo 'Running base simulation'
+	@build/./pottery -v 3 2>logs/base_run.log
+	@echo 'Running simulation with 3 workers and 1/3 more clay'
+	@build/./pottery -w 3 -l 2150 -v 3 2>logs/3_workers.log
+	@echo 'Running simulation with 8h work time with 3 workers and 3 circles'
+	@build/./pottery -w 3 -c 3 -t 8 -v 3 2>logs/short_worktime.log
 
 clean:
-	rm -rf main
+	@rm -rf pottery
+	@rm -rf logs
+	@rm -rf build
