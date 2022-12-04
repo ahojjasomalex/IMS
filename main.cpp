@@ -24,10 +24,10 @@ int to_bake_second = 0; // number of products that are ready for second round of
 int baked_second = 0;   // number of products that has already been baked both times
 int verbose = 0;
 
-int usable_workers_i = 4;
+int usable_workers_i = 2;
 int pottery_circles_i = 2;
 int worktime_i = 10;
-int avail_clay_i = 300;
+int avail_clay_i = 1650;
 int *usable_workers = &usable_workers_i;
 int *pottery_circles = &pottery_circles_i;
 int *worktime = &worktime_i;
@@ -37,7 +37,7 @@ Facility Furnace("Furnace");
 Facility Workers[NO_OF_WORKERS];
 
 Store Potter_circles("Pottery circles", *pottery_circles);
-Queue WorkerQueue("Worker queue"); // agregated queue for workers
+Queue WorkerQueue("Worker queue"); // aggregated queue for workers
 
 Histogram Clay_products("Time until clay products are ready for baking", 0, WEEK, 24);
 Histogram Glazed_products("Time until glazed products are ready for baking", 0, WEEK, 24);
@@ -64,7 +64,9 @@ bool check_is_number(const std::string &s)
         ++it;
     return !s.empty() && it == s.end();
 }
-
+///
+/// \param opt_arg
+/// \param arg
 void check_arg(char *opt_arg, int *arg)
 {
     char *endptr = nullptr;
@@ -79,13 +81,14 @@ void check_arg(char *opt_arg, int *arg)
     }
 }
 
+// Verbose logging
 class mystreambuf : public std::streambuf
 {
 };
 
 mystreambuf nostreambuf;
 std::ostream nocout(&nostreambuf);
-#define log(x) ((x <= verbose)? std::cout : nocout)
+#define log(x) ((x <= verbose)? std::cerr : nocout)
 
 // Processes
 void Baking::Behavior()
@@ -340,8 +343,8 @@ int main(int argc, char *argv[])
                 std::cout << "-w Number of workers (max is 10)\n"
                              "-c Number of pottery circles\n"
                              "-t Work time of the workers in hours (max is 24)\n"
-                             "-l Clay that is available for the simulation\n"
-                             "-v Verbose level"
+                             "-l Clay [kilograms] that is available for the simulation\n"
+                             "-v Verbose"
                              "-h Print this help\n"
                           << std::endl;
                 exit(0);
@@ -352,7 +355,7 @@ int main(int argc, char *argv[])
     }
     if (*usable_workers > NO_OF_WORKERS)
     {
-        log(1) << "Maximum number of workers is 10, you entered the number " << *usable_workers << std::endl;
+        std::cout << "Maximum number of workers is 10, you entered the number " << *usable_workers << std::endl;
         exit(EXIT_FAILURE);
     }
     if (*worktime > 24)
