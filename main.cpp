@@ -81,6 +81,13 @@ void check_arg(char *opt_arg, int *arg)
     }
 }
 
+enum log_level{
+    EMPTY = 0,
+    ERROR = 1,
+    WARNING = 2,
+    INFO = 3
+};
+std::string loglevel[4] = {"", "ERROR: ", "WARNING: ", "INFO: "};
 // Verbose logging
 class mystreambuf : public std::streambuf
 {
@@ -88,7 +95,7 @@ class mystreambuf : public std::streambuf
 
 mystreambuf nostreambuf;
 std::ostream nocout(&nostreambuf);
-#define log(x) ((x <= verbose)? std::cerr : nocout)
+#define log(x) ((x <= verbose)? std::cerr << loglevel[x] : nocout)
 
 // Processes
 void Baking::Behavior()
@@ -98,16 +105,16 @@ void Baking::Behavior()
 
     // Loading
     Seize(Furnace);
-    log(1) << "Seized furnace in time " << Time << std::endl;
+    log(INFO) << "Seized furnace in time " << Time << std::endl;
     Seize(Workers[w1]);
-    log(1) << "Seized worker " << w1 << " for loading in time " << Time << std::endl;
-    Wait(Uniform(HOUR - 5, HOUR + 5));
+    log(INFO) << "Seized worker[" << w1 << "] for loading in time " << Time << std::endl;
+    Wait(Uniform(HOUR - 15, HOUR));
     Release(Workers[w1]);
-    log(1) << "Released worker " << w1 << " from loading in time " << Time << std::endl;
+    log(INFO) << "Released worker[" << w1 << "] from loading in time " << Time << std::endl;
     ActivateWorkerQueue();
-    log(1) << "Activated worker queue in time " << Time << std::endl;
+    log(INFO) << "Activated worker queue in time " << Time << std::endl;
     // Baking
-    log(1) << "Baking started in time " << Time << std::endl;
+    log(INFO) << "Baking started in time " << Time << std::endl;
     Wait(16 * HOUR);
 
     // Select random worker
@@ -115,15 +122,15 @@ void Baking::Behavior()
 
     // Unloading
     Seize(Workers[w1]);
-    log(1) << "Seized worker " << w1 << " for unloading in time " << Time << std::endl;
-    Wait(Uniform(HOUR - 5, HOUR + 5));
+    log(INFO) << "Seized worker[" << w1 << "] for unloading in time " << Time << std::endl;
+    Wait(Uniform(HOUR - 15, HOUR));
     Release(Furnace);
-    log(1) << "Released furnace in time " << Time << std::endl;
+    log(INFO) << "Released furnace in time " << Time << std::endl;
     Release(Workers[w1]);
-    log(1) << "Released worker " << w1 << " from unloading in time " << Time << std::endl;
+    log(INFO) << "Released worker[" << w1 << "] from unloading in time " << Time << std::endl;
     ActivateWorkerQueue();
-    log(1) << "Activated worker queue in time " << Time << std::endl;
-    log(1) << "BAKING PROCESS FINISHED IN TIME " << Time << std::endl << std::endl;
+    log(INFO) << "Activated worker queue in time " << Time << std::endl;
+    log(INFO) << "BAKING PROCESS FINISHED IN TIME " << Time << std::endl << std::endl;
 }
 
 
@@ -165,8 +172,10 @@ void Finished_product::Behavior()
     }
 
     Seize(Workers[kt]);
+    log(INFO) << "Seized worker[" << kt << "] for painting product in time " << Time << std::endl;
     Wait(Uniform(work_period - work_period / 10.0, work_period + work_period / 10.0)); // glazing and painting
     Release(Workers[kt]);
+    log(INFO) << "Released worker[" << kt << "] from painting product in time " << Time << std::endl;
 
     ActivateWorkerQueue();
     Glazed_products(Time);
@@ -174,15 +183,17 @@ void Finished_product::Behavior()
     to_bake_second++;
     if (to_bake_second >= FURNACE_2ND_CAPACITY)
     {
-        log(1) << std::endl << "2ND BAKE PROCESS STARTED WITH " << to_bake_second << " PRODUCTS IN TIME " << Time
+        log(EMPTY) << std::endl;
+        log(INFO) <<  "2ND BAKE PROCESS STARTED WITH " << to_bake_second << " PRODUCTS IN TIME " << Time
                << std::endl;
         to_bake_second -= FURNACE_2ND_CAPACITY;
         baked_second += FURNACE_2ND_CAPACITY;
         (new Baking_2nd(FURNACE_2ND_CAPACITY))->Activate();
-    } else if (baked_second + to_bake_second == *avail_clay)
+    }
+    else if (baked_second + to_bake_second == *avail_clay)
     {
-        log(1) << std::endl << "2ND BAKE PROCESS STARTED WITH " << to_bake_second << " PRODUCTS IN TIME " << Time
-               << std::endl;
+        log(EMPTY) << std::endl;
+        log(INFO) << "2ND BAKE PROCESS STARTED WITH " << to_bake_second << " PRODUCTS IN TIME " << Time << std::endl;
 
         int baked_amount = to_bake_second;
         baked_second += to_bake_second;
@@ -220,29 +231,29 @@ void Clay_product::Behavior()
     }
 
     Seize(Workers[kt]);
-    log(1) << "Seized worker " << kt << " for making clay product in time " << Time << std::endl;
+    log(INFO) << "Seized worker[" << kt << "] for making clay product in time " << Time << std::endl;
 
 
     Enter(Potter_circles);
-    log(1) << "Seized 1 pottery circle in time " << Time << std::endl;
-    Wait(Uniform(HOUR - 15, HOUR + 15));
+    log(INFO) << "Seized a pottery circle in time " << Time << std::endl;
+    Wait(Uniform(HOUR - 30, HOUR));
     Leave(Potter_circles);
-    log(1) << "Released 1 pottery circle in time " << Time << std::endl;
+    log(INFO) << "Released a pottery circle in time " << Time << std::endl;
     Release(Workers[kt]);
-    log(1) << "Released worker " << kt << " from making clay product in time " << Time << std::endl;
+    log(INFO) << "Released worker[" << kt << "] from making clay product in time " << Time << std::endl;
 
 
     ActivateWorkerQueue();
     Clay_products(Time);
 
     Wait(4 * DAY);      // drying
-    log(1) << "One product dried up for baking in time " << Time << std::endl;
+    log(INFO) << "One product dried up for baking in time " << Time << std::endl;
 
     to_bake_first += 1; // add to bake queue
 
     if (to_bake_first >= FURNACE_CAPACITY)
     {
-        log(1) << std::endl << "1ST BAKE PROCESS STARTED WITH " << to_bake_first << " PRODUCTS IN TIME " << Time
+        log(INFO) << std::endl << "1ST BAKE PROCESS STARTED WITH " << to_bake_first << " PRODUCTS IN TIME " << Time
                << std::endl;
 
         to_bake_first -= FURNACE_CAPACITY;
@@ -250,7 +261,7 @@ void Clay_product::Behavior()
         (new Baking_1st(FURNACE_CAPACITY))->Activate();
     } else if (used_clay - to_bake_first == 0)
     {
-        log(1) << std::endl << "1ST BAKE PROCESS STARTED WITH " << to_bake_first << " PRODUCTS IN TIME " << Time
+        log(INFO) << std::endl << "1ST BAKE PROCESS STARTED WITH " << to_bake_first << " PRODUCTS IN TIME " << Time
                << std::endl;
 
         int baked_count = to_bake_first;
@@ -265,19 +276,19 @@ void Freetime::Behavior()
 {
     Priority = 10;
     Wait(*worktime * HOUR); // after x hours workers go home
-    log(1) << "Trying to seize worker " << workerNumber << " for free time in time " << Time << std::endl;
+    log(INFO) << "Trying to seize worker[" << workerNumber << "] for free time in time " << Time << std::endl;
 
     double tryingTime = Time;
     Seize(Workers[workerNumber]);
-    log(1) << "Seized worker " << workerNumber << " for free time in time " << Time << std::endl;
+    log(INFO) << "Seized worker[" << workerNumber << "] for free time in time " << Time << std::endl;
     double seizedTime = Time;
     double overtime = seizedTime - tryingTime;
-    log(1) << "Worker " << workerNumber << " worked in overtime for " << overtime << " minutes" << std::endl;
+    log(INFO) << "Worker[" << workerNumber << "] worked in overtime for " << overtime << " minutes" << std::endl;
 
     Wait(((24 - *worktime) * HOUR) - overtime); // home for 24-x hours
 
     Release(Workers[workerNumber]);
-    log(1) << "Released worker " << workerNumber << " from free time in time " << Time << std::endl;
+    log(INFO) << "Released worker[" << workerNumber << "] from free time in time " << Time << std::endl;
     ActivateWorkerQueue();
 }
 
@@ -340,14 +351,15 @@ int main(int argc, char *argv[])
             }
             case 'h':
             {
-                std::cout << "-w Number of workers (max is 10)\n"
-                             "-c Number of pottery circles\n"
-                             "-t Work time of the workers in hours (max is 24)\n"
-                             "-l Clay [kilograms] that is available for the simulation\n"
-                             "-v Verbose"
-                             "-h Print this help\n"
-                          << std::endl;
-                exit(0);
+                std::cout <<
+                "-w  <number of workers (max is 10)>\n"
+                "-c  <number of pottery circles used to make clay products (1 worker can use 1 circle at a time)>\n"
+                "-t  <[hours] of workshift time each day (max is 24)>\n"
+                "-l  <[kilograms] of clay that is available for the duration of simulation>\n"
+                "-v  <verbose logging level to stderr (use this with \"2> redirect_file\")>"
+                << std::endl;
+
+                exit(EXIT_SUCCESS);
             }
             default:
                 return 1;
@@ -362,6 +374,10 @@ int main(int argc, char *argv[])
     {
         std::cout << "Maximum work time is 24, you entered the number " << *worktime << std::endl;
         exit(EXIT_FAILURE);
+    }
+    if (*pottery_circles > *usable_workers)
+    {
+        log(WARNING) << "WARNING: Number of pottery circles is greater than number of workers" << std::endl;
     }
 
     Potter_circles.SetCapacity(*pottery_circles);
