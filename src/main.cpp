@@ -39,9 +39,9 @@ Facility Workers[NO_OF_WORKERS];
 Store Potter_circles("Pottery circles", *pottery_circles);
 Queue WorkerQueue("Worker queue"); // aggregated queue for workers
 
-Histogram Clay_products("Time until clay products are ready for baking", 0, WEEK, 24);
-Histogram Glazed_products("Time until glazed products are ready for baking", 0, WEEK, 24);
-Histogram Finished_products("Time until products are done", 0, WEEK, 24);
+Histogram Clay_products("Clay products ready for baking", 0, WEEK, 24);
+Histogram Glazed_products("Glazed products ready for baking", 0, WEEK, 24);
+Histogram Finished_products("Done products", 0, WEEK, 24);
 
 /**
  * Helper function to put workers back to work
