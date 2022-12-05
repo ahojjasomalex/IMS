@@ -11,18 +11,18 @@
 #define MONTH (4 * WEEK)
 #define SIM_LEN (6 * MONTH)
 
-
 // CAPACITIES
 const int FURNACE_CAPACITY = 150;
 const int FURNACE_2ND_CAPACITY = 80;
+const int WORKSHOP_PRODUCT_CAPACITY = 1000;
 const int NO_OF_WORKERS = 10;
 
 // GLOBALS
-int used_clay = 0;
+int used_clay = 0;      // clay in kgs used for products
 int to_bake_first = 0;  // number of products that are currently ready for baking
 int to_bake_second = 0; // number of products that are ready for second round of baking
 int baked_second = 0;   // number of products that has already been baked both times
-int verbose = 0;
+int verbose = 0;        // verbose logging level
 
 int usable_workers_i = 2;
 int pottery_circles_i = 2;
@@ -37,6 +37,7 @@ Facility Furnace("Furnace");
 Facility Workers[NO_OF_WORKERS];
 
 Store Potter_circles("Pottery circles", *pottery_circles);
+Store Product_store("Product store", WORKSHOP_PRODUCT_CAPACITY);
 Queue WorkerQueue("Worker queue"); // aggregated queue for workers
 
 Histogram Clay_products("Clay products ready for baking", 0, WEEK, 24);
@@ -64,9 +65,9 @@ bool check_is_number(const std::string &s)
         ++it;
     return !s.empty() && it == s.end();
 }
-///
-/// \param opt_arg
-/// \param arg
+/// Function checks if giver program arguments are valid
+/// \param opt_arg optarg parameter
+/// \param arg pointer to specific global integer to store value of optarg parameter
 void check_arg(char *opt_arg, int *arg)
 {
     char *endptr = nullptr;
@@ -81,6 +82,7 @@ void check_arg(char *opt_arg, int *arg)
     }
 }
 
+// Verbose logging levels
 enum log_level{
     EMPTY = 0,
     ERROR = 1,
@@ -88,14 +90,16 @@ enum log_level{
     INFO = 3
 };
 std::string loglevel[4] = {"", "ERROR: ", "WARNING: ", "INFO: "};
-// Verbose logging
+// Helper class for logging
 class mystreambuf : public std::streambuf
 {
 };
 
 mystreambuf nostreambuf;
 std::ostream nocout(&nostreambuf);
+// Logging macro
 #define log(x) ((x <= verbose)? std::cerr << loglevel[x] : nocout)
+
 
 // Processes
 void Baking::Behavior()
@@ -113,6 +117,7 @@ void Baking::Behavior()
     log(INFO) << "Released worker[" << w1 << "] from loading in time " << Time << std::endl;
     ActivateWorkerQueue();
     log(INFO) << "Activated worker queue in time " << Time << std::endl;
+
     // Baking
     log(INFO) << "Baking started in time " << Time << std::endl;
     Wait(16 * HOUR);
@@ -133,10 +138,18 @@ void Baking::Behavior()
     log(INFO) << "BAKING PROCESS FINISHED IN TIME " << Time << std::endl << std::endl;
 }
 
+void Baking_1st::Behavior()
+{
+    Baking::Behavior();
+    for (int i = 0; i < baked_count; i++)
+    {
+        (new Finished_product(60))->Activate();
+    }
+}
 
 void Baking_2nd::Behavior()
 {
-    Priority = 3;
+    Priority = 5; // Second baking has priority over first bake
     Baking::Behavior();
     for (int i = 0; i < baked_count; i++)
     {
@@ -144,70 +157,9 @@ void Baking_2nd::Behavior()
             baked_second--;
             (new Finished_product(5))->Activate();
         } else {
+            Leave(Product_store);  // Finished product leaving workshop
             Finished_products(Time);
         }
-    }
-}
-
-
-void Finished_product::Behavior()
-{
-    int kt = -1;
-
-    back:
-    for (int a = 0; a < *usable_workers; a++)
-    {
-        if (!Workers[a].Busy())
-        {
-            kt = a;
-            break;
-        }
-    }
-    if (kt == -1)
-    {
-        Priority = 3;
-        Into(WorkerQueue);
-        Passivate();
-        goto back;
-    }
-
-    Seize(Workers[kt]);
-    log(INFO) << "Seized worker[" << kt << "] for painting product in time " << Time << std::endl;
-    Wait(Uniform(work_period - work_period / 10.0, work_period + work_period / 10.0)); // glazing and painting
-    Release(Workers[kt]);
-    log(INFO) << "Released worker[" << kt << "] from painting product in time " << Time << std::endl;
-
-    ActivateWorkerQueue();
-    Glazed_products(Time);
-
-    to_bake_second++;
-    if (to_bake_second >= FURNACE_2ND_CAPACITY)
-    {
-        log(EMPTY) << std::endl;
-        log(INFO) <<  "2ND BAKE PROCESS STARTED WITH " << to_bake_second << " PRODUCTS IN TIME " << Time
-               << std::endl;
-        to_bake_second -= FURNACE_2ND_CAPACITY;
-        baked_second += FURNACE_2ND_CAPACITY;
-        (new Baking_2nd(FURNACE_2ND_CAPACITY))->Activate();
-    }
-    else if (baked_second + to_bake_second == *avail_clay)
-    {
-        log(EMPTY) << std::endl;
-        log(INFO) << "2ND BAKE PROCESS STARTED WITH " << to_bake_second << " PRODUCTS IN TIME " << Time << std::endl;
-
-        int baked_amount = to_bake_second;
-        baked_second += to_bake_second;
-        to_bake_second = 0;
-        (new Baking_2nd(baked_amount))->Activate();
-    }
-}
-
-void Baking_1st::Behavior()
-{
-    Baking::Behavior();
-    for (int i = 0; i < baked_count; i++)
-    {
-        (new Finished_product(60))->Activate();
     }
 }
 
@@ -245,24 +197,25 @@ void Clay_product::Behavior()
 
     ActivateWorkerQueue();
     Clay_products(Time);
-
-    Wait(4 * DAY);      // drying
+    Enter(Product_store);
+    Wait(4 * DAY);  // Drying
     log(INFO) << "One product dried up for baking in time " << Time << std::endl;
 
-    to_bake_first += 1; // add to bake queue
+    to_bake_first += 1;
 
-    if (to_bake_first >= FURNACE_CAPACITY)
+    if (to_bake_first >= FURNACE_CAPACITY) // Baking with full furnace
     {
         log(INFO) << std::endl << "1ST BAKE PROCESS STARTED WITH " << to_bake_first << " PRODUCTS IN TIME " << Time
-               << std::endl;
+                  << std::endl;
 
         to_bake_first -= FURNACE_CAPACITY;
         used_clay -= FURNACE_CAPACITY;
         (new Baking_1st(FURNACE_CAPACITY))->Activate();
-    } else if (used_clay - to_bake_first == 0)
+    }
+    else if (used_clay - to_bake_first == 0) // Baking with residual products
     {
         log(INFO) << std::endl << "1ST BAKE PROCESS STARTED WITH " << to_bake_first << " PRODUCTS IN TIME " << Time
-               << std::endl;
+                  << std::endl;
 
         int baked_count = to_bake_first;
         to_bake_first = 0;
@@ -271,6 +224,57 @@ void Clay_product::Behavior()
     }
 }
 
+void Finished_product::Behavior()
+{
+    int kt = -1;
+
+    back:
+    for (int a = 0; a < *usable_workers; a++)
+    {
+        if (!Workers[a].Busy())
+        {
+            kt = a;
+            break;
+        }
+    }
+    if (kt == -1)
+    {
+        Priority = 5;
+        Into(WorkerQueue);
+        Passivate();
+        goto back;
+    }
+
+    Seize(Workers[kt]);
+    log(INFO) << "Seized worker[" << kt << "] for painting product in time " << Time << std::endl;
+    Wait(Uniform(work_period - work_period / 10.0, work_period + work_period / 10.0)); // glazing and painting
+    Release(Workers[kt]);
+    log(INFO) << "Released worker[" << kt << "] from painting product in time " << Time << std::endl;
+
+    ActivateWorkerQueue();
+    Glazed_products(Time);
+
+    to_bake_second++;
+    if (to_bake_second >= FURNACE_2ND_CAPACITY)
+    {
+        log(EMPTY) << std::endl;
+        log(INFO) <<  "2ND BAKE PROCESS STARTED WITH " << to_bake_second << " PRODUCTS IN TIME " << Time
+               << std::endl;
+        to_bake_second -= FURNACE_2ND_CAPACITY;
+        baked_second += FURNACE_2ND_CAPACITY;
+        (new Baking_2nd(FURNACE_2ND_CAPACITY))->Activate();
+    }
+    else if (baked_second + to_bake_second == *avail_clay)
+    {
+        log(EMPTY) << std::endl;
+        log(INFO) << "2ND BAKE PROCESS STARTED WITH " << to_bake_second << " PRODUCTS IN TIME " << Time << std::endl;
+
+        int baked_amount = to_bake_second;
+        baked_second += to_bake_second;
+        to_bake_second = 0;
+        (new Baking_2nd(baked_amount))->Activate();
+    }
+}
 
 void Freetime::Behavior()
 {
@@ -293,7 +297,6 @@ void Freetime::Behavior()
 }
 
 // Events
-
 void Clay_generator::Behavior()
 {
     if (used_clay >= *avail_clay)
@@ -306,7 +309,6 @@ void Clay_generator::Behavior()
     Activate(Time);
 }
 
-
 void Freetime_generator::Behavior()
 {
     for (int i = 0; i < *usable_workers; i++)
@@ -316,6 +318,7 @@ void Freetime_generator::Behavior()
 
     Activate(Time + 24 * HOUR); // free time is every day
 }
+
 
 int main(int argc, char *argv[])
 {
@@ -407,6 +410,7 @@ int main(int argc, char *argv[])
     }
     Furnace.Output();
     WorkerQueue.Output();
+    Product_store.Output();
     Clay_products.Output();
     Glazed_products.Output();
     Finished_products.Output();

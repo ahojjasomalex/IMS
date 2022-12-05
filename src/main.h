@@ -21,12 +21,25 @@ public:
     }
 };
 
+class Baking_1st : public Baking
+{
+    void Behavior() override;
+
+public:
+    explicit Baking_1st(int baked_count) : Baking(baked_count) {}
+};
+
 class Baking_2nd : public Baking
 {
     void Behavior() override;
 
 public:
     explicit Baking_2nd(int baked_count) : Baking(baked_count) {}
+};
+
+class Clay_product : public Process
+{
+    void Behavior() override;
 };
 
 class Finished_product : public Process
@@ -37,19 +50,6 @@ public:
     explicit Finished_product(int work_period) : Process() {
         this->work_period = work_period;
     }
-};
-
-class Baking_1st : public Baking
-{
-    void Behavior() override;
-
-public:
-    explicit Baking_1st(int baked_count) : Baking(baked_count) {}
-};
-
-class Clay_product : public Process
-{
-    void Behavior() override;
 };
 
 class Freetime : public Process
