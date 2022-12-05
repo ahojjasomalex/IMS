@@ -1,5 +1,9 @@
 # IMS PROJECT
 IMS 2022/23 project developed by Alex Bazo and Marek Danco. Project models 6 months in a pottery workshop.
+
+## Prerequisites
+For running this project, it is required to have [SIMLIB](https://www.fit.vutbr.cz/~peringer/SIMLIB/) installed at `/usr/local/include/simlib`.
+
 ## Installation
 Unpack the archive and run:
 ```bash
@@ -10,7 +14,7 @@ To run predetermined experiments use:
 ```bash
 make run
 ```
-Running own experiments can be done by providing command line arguments
+Running own experiments can be done by running the program with `./build/pottery` providing command line arguments
 ```
     -w, --workers            <number of workers (max is 10)>
     -c, --circles            <number of pottery circles used to make clay products>
