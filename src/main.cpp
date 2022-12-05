@@ -1,3 +1,7 @@
+/// \author Alex Bazo
+/// \author Marek Danco
+/// \date 2022-12-05
+
 #include <iostream>
 #include <getopt.h>
 #include "simlib.h"
@@ -11,13 +15,13 @@
 #define MONTH (4 * WEEK)
 #define SIM_LEN (6 * MONTH)
 
-// CAPACITIES
-const int FURNACE_CAPACITY = 150;
-const int FURNACE_2ND_CAPACITY = 80;
-const int WORKSHOP_PRODUCT_CAPACITY = 1000;
+// CONSTANTS
 const int NO_OF_WORKERS = 10;
 
 // GLOBALS
+int furnace_capacity = 150;
+int furnace_2nd_capacity = furnace_capacity / 2;
+int workshop_product_capacity = 500;
 int used_clay = 0;      // clay in kgs used for products
 int to_bake_first = 0;  // number of products that are currently ready for baking
 int to_bake_second = 0; // number of products that are ready for second round of baking
@@ -27,7 +31,9 @@ int verbose = 0;        // verbose logging level
 int usable_workers_i = 2;
 int pottery_circles_i = 2;
 int worktime_i = 10;
-int avail_clay_i = 1650;
+int avail_clay_i = 1800;
+
+// Pointers to integers
 int *usable_workers = &usable_workers_i;
 int *pottery_circles = &pottery_circles_i;
 int *worktime = &worktime_i;
@@ -37,16 +43,27 @@ Facility Furnace("Furnace");
 Facility Workers[NO_OF_WORKERS];
 
 Store Potter_circles("Pottery circles", *pottery_circles);
-Store Product_store("Product store", WORKSHOP_PRODUCT_CAPACITY);
+Store Product_store("Product store", workshop_product_capacity);
 Queue WorkerQueue("Worker queue"); // aggregated queue for workers
 
-Histogram Clay_products("Clay products ready for baking", 0, WEEK, 24);
-Histogram Glazed_products("Glazed products ready for baking", 0, WEEK, 24);
-Histogram Finished_products("Done products", 0, WEEK, 24);
+Histogram Clay_products;
+Histogram Glazed_products;
+Histogram Finished_products;
 
-/**
- * Helper function to put workers back to work
- */
+void print_help()
+{
+    std::cout <<
+              "-w, --workers            <number of workers (max is 10)>\n"
+              "-c, --circles            <number of pottery circles used to make clay products (1 worker can use 1 circle at a time)>\n"
+              "-t, --workshift          <[hours] of workshift time each day (max is 24)>\n"
+              "-l, --clay               <[kilograms] of clay that is available for the duration of simulation>\n"
+              "-v, --verbose            <verbose logging level to stderr (use this with \"2> redirect_file\")>"
+              "-x, --furnace-capacity   <number of products that can be baked at the time>"
+              "-z, --workshop-capacity  <number products that can be in workshop at the time>"
+              "-h, --help               <prints this help>"
+              << std::endl;
+}
+
 void ActivateWorkerQueue()
 {
     if (WorkerQueue.Length() > 0)
@@ -55,9 +72,6 @@ void ActivateWorkerQueue()
     }
 }
 
-/// Checks if string contains only digits
-/// \param s string
-/// \return True if digits only
 bool check_is_number(const std::string &s)
 {
     std::string::const_iterator it = s.begin();
@@ -65,9 +79,7 @@ bool check_is_number(const std::string &s)
         ++it;
     return !s.empty() && it == s.end();
 }
-/// Function checks if giver program arguments are valid
-/// \param opt_arg optarg parameter
-/// \param arg pointer to specific global integer to store value of optarg parameter
+
 void check_arg(char *opt_arg, int *arg)
 {
     char *endptr = nullptr;
@@ -85,7 +97,7 @@ void check_arg(char *opt_arg, int *arg)
 // Verbose logging levels
 enum log_level{
     EMPTY = 0,
-    ERROR = 1,
+    //ERROR = 1,
     WARNING = 2,
     INFO = 3
 };
@@ -166,7 +178,7 @@ void Baking_2nd::Behavior()
 void Clay_product::Behavior()
 {
     int kt = -1;
-    back:
+    waiting_for_worker:
     for (int a = 0; a < *usable_workers; a++)
     {
         if (!Workers[a].Busy())
@@ -179,7 +191,16 @@ void Clay_product::Behavior()
     {
         Into(WorkerQueue);
         Passivate();
-        goto back;
+        goto waiting_for_worker;
+    }
+
+    waiting_for_store_capacity:
+    if(Product_store.Full())
+    {
+        log(WARNING) << "WORKSHOP IS FULL! Worker[" << kt << "] cannot proceed to make a product"<< std::endl;
+        Into(WorkerQueue);
+        Passivate();
+        goto waiting_for_store_capacity;
     }
 
     Seize(Workers[kt]);
@@ -201,26 +222,35 @@ void Clay_product::Behavior()
     Wait(4 * DAY);  // Drying
     log(INFO) << "One product dried up for baking in time " << Time << std::endl;
 
-    to_bake_first += 1;
+    to_bake_first++;
 
-    if (to_bake_first >= FURNACE_CAPACITY) // Baking with full furnace
+    if (to_bake_first >= furnace_capacity) // Baking with full furnace
     {
-        log(INFO) << std::endl << "1ST BAKE PROCESS STARTED WITH " << to_bake_first << " PRODUCTS IN TIME " << Time
+        log(INFO) << std::endl <<  to_bake_first << " PRODUCTS DRIED UP. 1ST BAKING PROCESS STARTED IN TIME " << Time
                   << std::endl;
 
-        to_bake_first -= FURNACE_CAPACITY;
-        used_clay -= FURNACE_CAPACITY;
-        (new Baking_1st(FURNACE_CAPACITY))->Activate();
+        to_bake_first -= furnace_capacity;
+        used_clay -= furnace_capacity;
+        (new Baking_1st(furnace_capacity))->Activate();
     }
-    else if (used_clay - to_bake_first == 0) // Baking with residual products
+    else if (used_clay - to_bake_first == 0 || (Product_store.Full() && to_bake_first >= furnace_capacity / 2)) // Baking with residual products
     {
-        log(INFO) << std::endl << "1ST BAKE PROCESS STARTED WITH " << to_bake_first << " PRODUCTS IN TIME " << Time
+        log(INFO) << std::endl <<  to_bake_first << " PRODUCTS DRIED UP. 1ST BAKING PROCESS STARTED IN TIME " << Time
                   << std::endl;
 
         int baked_count = to_bake_first;
+        used_clay -= to_bake_first;
         to_bake_first = 0;
-        used_clay = 0;
         (new Baking_1st(baked_count))->Activate();
+    } else if (Product_store.Full() && to_bake_second >= furnace_capacity / 2) {
+        log(EMPTY) << std::endl;
+        log(INFO) << std::endl <<  to_bake_second << " PRODUCTS GLAZED. 2ND BAKING PROCESS STARTED IN TIME " << Time
+                  << std::endl;
+
+        int baked_amount = to_bake_second;
+        baked_second += to_bake_second;
+        to_bake_second = 0;
+        (new Baking_2nd(baked_amount))->Activate();
     }
 }
 
@@ -255,24 +285,33 @@ void Finished_product::Behavior()
     Glazed_products(Time);
 
     to_bake_second++;
-    if (to_bake_second >= FURNACE_2ND_CAPACITY)
+    if (to_bake_second >= furnace_2nd_capacity)
     {
         log(EMPTY) << std::endl;
-        log(INFO) <<  "2ND BAKE PROCESS STARTED WITH " << to_bake_second << " PRODUCTS IN TIME " << Time
-               << std::endl;
-        to_bake_second -= FURNACE_2ND_CAPACITY;
-        baked_second += FURNACE_2ND_CAPACITY;
-        (new Baking_2nd(FURNACE_2ND_CAPACITY))->Activate();
+        log(INFO) << std::endl <<  to_bake_second << " PRODUCTS GLAZED. 2ND BAKING PROCESS STARTED IN TIME " << Time
+                  << std::endl;
+        to_bake_second -= furnace_2nd_capacity;
+        baked_second += furnace_2nd_capacity;
+        (new Baking_2nd(furnace_2nd_capacity))->Activate();
     }
-    else if (baked_second + to_bake_second == *avail_clay)
+    else if (baked_second + to_bake_second == *avail_clay || (Product_store.Full() && to_bake_second >= furnace_2nd_capacity / 2))
     {
         log(EMPTY) << std::endl;
-        log(INFO) << "2ND BAKE PROCESS STARTED WITH " << to_bake_second << " PRODUCTS IN TIME " << Time << std::endl;
+        log(INFO) << std::endl <<  to_bake_second << " PRODUCTS GLAZED. 2ND BAKING PROCESS STARTED IN TIME " << Time
+                  << std::endl;
 
         int baked_amount = to_bake_second;
         baked_second += to_bake_second;
         to_bake_second = 0;
         (new Baking_2nd(baked_amount))->Activate();
+    } else if (Product_store.Full() && to_bake_first >= furnace_2nd_capacity / 2) {
+        log(INFO) << std::endl <<  to_bake_first << " PRODUCTS DRIED UP. 1ST BAKING PROCESS STARTED IN TIME " << Time
+                  << std::endl;
+
+        int baked_count = to_bake_first;
+        used_clay -= to_bake_first;
+        to_bake_first = 0;
+        (new Baking_1st(baked_count))->Activate();
     }
 }
 
@@ -323,45 +362,80 @@ void Freetime_generator::Behavior()
 int main(int argc, char *argv[])
 {
     int opt;
-    while ((opt = getopt(argc, argv, "c:w:t:l:v:h")) != -1)
+    int option_index = 0;
+    static struct option long_options[] = {
+            {"circles", required_argument, nullptr, 'c'},
+            {"workers", required_argument, nullptr, 'w' },
+            {"workshift", required_argument, nullptr,'t' },
+            {"clay", required_argument, nullptr, 'l' },
+            {"verbose", required_argument, nullptr, 'v'},
+            {"furnace-capacity", required_argument,nullptr, 'x'},
+            {"workshop-capacity", required_argument, nullptr,'z' },
+            {"help", 0, nullptr, 0 }
+    };
+    while ((opt = getopt_long(argc, argv, "c:w:t:l:v:x:z:h", long_options, &option_index)) != -1)
     {
         switch (opt)
         {
+            case 0:
+            {
+                switch (option_index)
+                {
+                    case 0:
+                        check_arg(optarg, &pottery_circles_i);
+                        break;
+                    case 1:
+                        check_arg(optarg, &usable_workers_i);
+                        break;
+                    case 2:
+                        check_arg(optarg, &worktime_i);
+                        break;
+                    case 3:
+                        check_arg(optarg, &avail_clay_i);
+                        break;
+                    case 4:
+                        check_arg(optarg, &verbose);
+                        break;
+                    case 5:
+                        check_arg(optarg, &furnace_capacity);
+                        break;
+                    case 6:
+                        check_arg(optarg, &workshop_product_capacity);
+                        break;
+                    case 7:
+                    {
+                        print_help();
+                        exit(EXIT_SUCCESS);
+                    }
+                    default:
+                        return 1;
+                }
+                break;
+            }
             case 'c':
-            {
-                check_arg(optarg, pottery_circles);
+                check_arg(optarg, &pottery_circles_i);
                 break;
-            }
             case 'w':
-            {
-                check_arg(optarg, usable_workers);
+                check_arg(optarg, &usable_workers_i);
                 break;
-            }
             case 't':
-            {
-                check_arg(optarg, worktime);
+                check_arg(optarg, &worktime_i);
                 break;
-            }
             case 'l':
-            {
-                check_arg(optarg, avail_clay);
+                check_arg(optarg, &avail_clay_i);
                 break;
-            }
             case 'v':
-            {
                 check_arg(optarg, &verbose);
                 break;
-            }
+            case 'x':
+                check_arg(optarg, &furnace_capacity);
+                break;
+            case 'z':
+                check_arg(optarg, &workshop_product_capacity);
+                break;
             case 'h':
             {
-                std::cout <<
-                "-w  <number of workers (max is 10)>\n"
-                "-c  <number of pottery circles used to make clay products (1 worker can use 1 circle at a time)>\n"
-                "-t  <[hours] of workshift time each day (max is 24)>\n"
-                "-l  <[kilograms] of clay that is available for the duration of simulation>\n"
-                "-v  <verbose logging level to stderr (use this with \"2> redirect_file\")>"
-                << std::endl;
-
+                print_help();
                 exit(EXIT_SUCCESS);
             }
             default:
@@ -382,8 +456,16 @@ int main(int argc, char *argv[])
     {
         log(WARNING) << "WARNING: Number of pottery circles is greater than number of workers" << std::endl;
     }
+    if (furnace_capacity > workshop_product_capacity)
+    {
+        std::cout << "Workshop capacity cannot be less than furnace capacity" << std::endl;
+        exit(EXIT_FAILURE);
+    }
 
+    // Set parameters from arguments
+    furnace_2nd_capacity = furnace_capacity / 2;
     Potter_circles.SetCapacity(*pottery_circles);
+    Product_store.SetCapacity(workshop_product_capacity);
 
     RandomSeed(time(nullptr));
     Init(0.0, SIM_LEN);
@@ -393,6 +475,8 @@ int main(int argc, char *argv[])
     std::cout << "Number of pottery circles: " << *pottery_circles << std::endl;
     std::cout << "Work time in hours: " << *worktime << std::endl;
     std::cout << "Available clay: " << *avail_clay << std::endl;
+    std::cout << "Furnace capacity: " << furnace_capacity << std::endl;
+    std::cout << "Workshop capacity: " << workshop_product_capacity << std::endl;
     std::cout << "Verbose level: " << verbose << std::endl << std::endl;
 
     (new Clay_generator)->Activate();
@@ -402,6 +486,17 @@ int main(int argc, char *argv[])
         std::string worker = "Worker " + std::to_string(i);
         Workers[i].SetName(worker);
     }
+
+    // Histograms initialization
+    Clay_products.SetName("Clay products ready for baking");
+    Clay_products.Init(0, WEEK, SIM_LEN/WEEK);
+
+    Glazed_products.SetName("Glazed products ready for baking");
+    Glazed_products.Init(0, WEEK, SIM_LEN/WEEK);
+
+    Finished_products.SetName("Finished products");
+    Finished_products.Init(0, WEEK, SIM_LEN/WEEK);
+
     Run();
 
     for (int i = 0; i < *usable_workers; i++)
@@ -411,6 +506,7 @@ int main(int argc, char *argv[])
     Furnace.Output();
     WorkerQueue.Output();
     Product_store.Output();
+    //Histograms
     Clay_products.Output();
     Glazed_products.Output();
     Finished_products.Output();
