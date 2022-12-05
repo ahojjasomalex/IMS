@@ -187,34 +187,27 @@ void Clay_product::Behavior()
             break;
         }
     }
-    if (kt == -1)
+    if (kt == -1 || Product_store.Full() || Potter_circles.Full())
     {
         Into(WorkerQueue);
         Passivate();
         goto waiting_for_worker;
     }
 
-    waiting_for_store_capacity:
-    if(Product_store.Full())
-    {
-        log(WARNING) << "WORKSHOP IS FULL! Worker[" << kt << "] cannot proceed to make a product"<< std::endl;
-        Into(WorkerQueue);
-        Passivate();
-        goto waiting_for_store_capacity;
-    }
+    double start_time = Time;
 
     Seize(Workers[kt]);
     log(INFO) << "Seized worker[" << kt << "] for making clay product in time " << Time << std::endl;
-
-
     Enter(Potter_circles);
-    log(INFO) << "Seized a pottery circle in time " << Time << std::endl;
+    log(INFO) << "Worker[" << kt << "] seized a pottery circle in time " << Time << std::endl;
+
+
+
     Wait(Uniform(HOUR - 30, HOUR));
     Leave(Potter_circles);
-    log(INFO) << "Released a pottery circle in time " << Time << std::endl;
+    log(INFO) << "Worker[" << kt << "] released a pottery circle in after " << Time-start_time << " minutes" << std::endl;
     Release(Workers[kt]);
     log(INFO) << "Released worker[" << kt << "] from making clay product in time " << Time << std::endl;
-
 
     ActivateWorkerQueue();
     Clay_products(Time);
@@ -505,11 +498,16 @@ int main(int argc, char *argv[])
     }
     Furnace.Output();
     WorkerQueue.Output();
+
+    // Stores
+    Potter_circles.Output();
     Product_store.Output();
+
     //Histograms
-    Clay_products.Output();
-    Glazed_products.Output();
+//    Clay_products.Output();
+//    Glazed_products.Output();
     Finished_products.Output();
+
 
     std::cout << std::string(23, '-') << "SIMULATION END" << std::string(23, '-') << std::endl;
     return 0;
