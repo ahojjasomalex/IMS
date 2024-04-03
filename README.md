@@ -1,5 +1,5 @@
-# IMS PROJECT
-IMS 2022/23 project developed by Alex Bazo and Marek Danco. Project models 6 months in a pottery workshop.
+# Modelling and Simulation scholl project
+2022/23 project developed by Alex Bazo and Marek Danco. Project models 6 months in a pottery workshop.
 
 ## Prerequisites
 For running this project, it is required to have [SIMLIB](https://www.fit.vutbr.cz/~peringer/SIMLIB/) installed at `/usr/local/include/simlib`.
