@@ -1,4 +1,4 @@
-# Modelling and Simulation scholl project
+# Modelling and Simulation school project
 2022/23 project developed by Alex Bazo and Marek Danco. Project models 6 months in a pottery workshop.
 
 ## Prerequisites
